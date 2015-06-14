@@ -26,7 +26,7 @@
 ///////////////////////////////////////////////////////////
 
 var isAlreadyRunning = false;
-var autoClickGoldRain = true;
+var autoClickGoldRain = false;
 
 var clickRate = 10; // change to number of desired clicks per second
 var timer = 0;
@@ -67,6 +67,50 @@ var ENEMY_TYPE = {
     "TREASURE": 4
 };
 
+var ABILITY_CONDITIONS = {};
+ABILITY_CONDITIONS[ABILITIES.CLUSTER_BOMB] = {
+	spawnerExists: true,
+	enemyCount: 3,
+	spawnerMinHealthPercent: null,
+	spawnerMaxHealthPercent: null
+};
+ABILITY_CONDITIONS[ABILITIES.NAPALM] = {
+	spawnerExists: true,
+	enemyCount: 3,
+	spawnerMinHealthPercent: null,
+	spawnerMaxHealthPercent: null
+};
+ABILITY_CONDITIONS[ABILITIES.NUKE] = {
+	spawnerExists: true,
+	enemyCount: null,
+	spawnerMinHealthPercent: 0.3,
+	spawnerMaxHealthPercent: 0.6
+};
+ABILITY_CONDITIONS[ABILITIES.MORALE_BOOSTER] = {
+	spawnerExists: true,
+	enemyCount: 3,
+	spawnerMinHealthPercent: null,
+	spawnerMaxHealthPercent: null
+};
+ABILITY_CONDITIONS[ABILITIES.GOOD_LUCK] = {
+	spawnerExists: null,
+	enemyCount: 2,
+	spawnerMinHealthPercent: null,
+	spawnerMaxHealthPercent: null
+};
+
+var ITEM_CONDITIONS = {};
+ITEM_CONDITIONS[ITEMS.GOLD_RAIN] = {
+	spawnerExists: null,
+	bossMinHealthPercent: 0.6,
+	spawnerMinHealthPercent: null
+};
+ITEM_CONDITIONS[ITEMS.CRIPPLE_SPAWNER] = {
+	spawnerExists: true,
+	bossMinHealthPercent: null,
+	spawnerMinHealthPercent: 0.95
+};
+
 if (thingTimer){
 	window.clearInterval(thingTimer);
 }
@@ -95,15 +139,17 @@ function doTheThing() {
 		isAlreadyRunning = true;
 
 		goToLaneWithBestTarget();
-		useGoodLuckCharmIfRelevant();
+		useOffensiveAbilityIfAvailable(ABILITIES.GOOD_LUCK);
 		useMedicsIfRelevant();
-		useMoraleBoosterIfRelevant();
-		useClusterBombIfRelevant();
-		useNapalmIfRelevant();
-		useTacticalNukeIfRelevant();
-		useCrippleSpawnerIfRelevant();
+		useOffensiveAbilityIfAvailable(ABILITIES.MORALE_BOOSTER);
+		useOffensiveAbilityIfAvailable(ABILITIES.CLUSTER_BOMB);
+		useOffensiveAbilityIfAvailable(ABILITIES.NAPALM);
+		useOffensiveAbilityIfAvailable(ABILITIES.NUKE);
+		useItemIfAvailable(ITEMS.CRIPPLE_SPAWNER);
+		useItemIfAvailable(ITEMS.GOLD_RAIN);
+		//useCrippleSpawnerIfRelevant();
 		useMetalDetectorIfRelevant();
-		useGoldRainIfRelevant();
+		//useGoldRainIfRelevant();
 		attemptRespawn();
 
 		if(autoClickGoldRain) {
@@ -277,113 +323,60 @@ function useMedicsIfRelevant() {
 		triggerItem(ITEMS.GOD_MODE);
 	}
 };
-
-// Use Good Luck Charm if doable
-function useGoodLuckCharmIfRelevant() {
-	// check if Good Luck Charms is purchased and cooled down
-	if (hasPurchasedAbility(ABILITIES.GOOD_LUCK)) {
-		if (isAbilityCoolingDown(ABILITIES.GOOD_LUCK)) {
-			return;
-		}
-		
-		if (! isAbilityEnabled(ABILITIES.GOOD_LUCK)) {
-			return;
-		}
-
-		// Good Luck Charms is purchased, cooled down, and needed. Trigger it.
-		console.log('Good Luck Charms is purchased, cooled down, and needed. Trigger it.');
-		triggerAbility(ABILITIES.GOOD_LUCK);
-	}
-}
-
-function useClusterBombIfRelevant() {
+function useOffensiveAbilityIfAvailable(abilityId) {
 	//Check if Cluster Bomb is purchased and cooled down
-	if (hasPurchasedAbility(ABILITIES.CLUSTER_BOMB)) {
-		if (isAbilityCoolingDown(ABILITIES.CLUSTER_BOMB)) {
+	if (hasPurchasedAbility(abilityId)) {
+		if (isAbilityCoolingDown(abilityId)) {
 			return;
 		}
-		
+
 		//Check lane has monsters to explode
 		var currentLane = g_Minigame.CurrentScene().m_nExpectedLane;
 		var enemyCount = 0;
 		var enemySpawnerExists = false;
+		var enemySpawnerHealthPercent = 0.0;
+
 		//Count each slot in lane
 		for (var i = 0; i < 4; i++) {
 			var enemy = g_Minigame.CurrentScene().GetEnemy(currentLane, i);
 			if (enemy) {
 				enemyCount++;
-				if (enemy.m_data.type == 0) { 
+				if (enemy.m_data.type == 0) {
 					enemySpawnerExists = true;
+					enemySpawnerHealthPercent = enemy.m_flDisplayedHP / enemy.m_data.max_hp;
 				}
 			}
 		}
-		//Bombs away if spawner and 2+ other monsters
-		if (enemySpawnerExists && enemyCount >= 3) {
-			triggerAbility(ABILITIES.CLUSTER_BOMB);
+
+		var meetsConditions = true;
+
+		//Only check the conditions that need to be checked	   
+		if (ABILITY_CONDITIONS[abilityId].enemyCount != null) {
+			meetsConditions = meetsConditions && enemyCount >= ABILITY_CONDITIONS[abilityId].enemyCount;
+		}
+
+		if (ABILITY_CONDITIONS[abilityId].spawnerExists != null) {
+			meetsConditions = meetsConditions && enemySpawnerExists === ABILITY_CONDITIONS[abilityId].spawnerExists;
+		}
+
+		if (ABILITY_CONDITIONS[abilityId].spawnerMinHealthPercent != null) {
+			meetsConditions = meetsConditions && enemySpawnerHealthPercent > ABILITY_CONDITIONS[abilityId].spawnerMinHealthPercent;
+		}
+
+		if (ABILITY_CONDITIONS[abilityId].spawnerMaxHealthPercent != null) {
+			meetsConditions = meetsConditions && enemySpawnerHealthPercent < ABILITY_CONDITIONS[abilityId].spawnerMaxHealthPercent;
+		}
+
+		if (meetsConditions === true) {
+			triggerAbility(abilityId);
 		}
 	}
 }
 
-function useNapalmIfRelevant() {
-	//Check if Napalm is purchased and cooled down
-	if (hasPurchasedAbility(ABILITIES.NAPALM)) {
-		if (isAbilityCoolingDown(ABILITIES.NAPALM)) {
-			return;
-		}
-		
-		//Check lane has monsters to burn
-		var currentLane = g_Minigame.CurrentScene().m_nExpectedLane;
-		var enemyCount = 0;
-		var enemySpawnerExists = false;
-		//Count each slot in lane
-		for (var i = 0; i < 4; i++) {
-			var enemy = g_Minigame.CurrentScene().GetEnemy(currentLane, i);
-			if (enemy) {
-				enemyCount++;
-				if (enemy.m_data.type == 0) { 
-					enemySpawnerExists = true;
-				}
-			}
-		}
-		//Burn them all if spawner and 2+ other monsters
-		if (enemySpawnerExists && enemyCount >= 3) {
-			triggerAbility(ABILITIES.NAPALM);
-		}
-	}
-}
-
-function useMoraleBoosterIfRelevant() {
-	// Check if Morale Booster is purchased
-	if(hasPurchasedAbility(5)) {
-		if (isAbilityCoolingDown(5)) {
-			return;
-		}
-		
-		//Check lane has monsters so the hype isn't wasted
-		var currentLane = g_Minigame.CurrentScene().m_nExpectedLane;
-		var enemyCount = 0;
-		var enemySpawnerExists = false;
-		//Count each slot in lane
-		for (var i = 0; i < 4; i++) {
-			var enemy = g_Minigame.CurrentScene().GetEnemy(currentLane, i);
-			if (enemy) {
-				enemyCount++;
-				if (enemy.m_data.type == 0) { 
-					enemySpawnerExists = true;
-				}
-			}
-		}
-		//Hype everybody up!
-		if (enemySpawnerExists && enemyCount >= 3) {
-			triggerAbility(5);
-		}
-	}
-}
-
-function useTacticalNukeIfRelevant() {
-	// Check if Tactical Nuke is purchased
-	if(hasPurchasedAbility(ABILITIES.NUKE)) {
-		if (isAbilityCoolingDown(ABILITIES.NUKE)) {
+function useItemIfAvailable(itemId) {
+	// Check if Cripple Spawner is available
+	if (hasItem(itemId)) {
+		if (isAbilityCoolingDown(itemId)) {
 			return;
 		}
 
@@ -391,6 +384,8 @@ function useTacticalNukeIfRelevant() {
 		var currentLane = g_Minigame.CurrentScene().m_nExpectedLane;
 		var enemySpawnerExists = false;
 		var enemySpawnerHealthPercent = 0.0;
+		var enemyBossHealthPercent = 0.0;
+
 		//Count each slot in lane
 		for (var i = 0; i < 4; i++) {
 			var enemy = g_Minigame.CurrentScene().GetEnemy(currentLane, i);
@@ -399,13 +394,29 @@ function useTacticalNukeIfRelevant() {
 					enemySpawnerExists = true;
 					enemySpawnerHealthPercent = enemy.m_flDisplayedHP / enemy.m_data.max_hp;
 				}
+
+				if (enemy.m_data.type == ENEMY_TYPE.BOSS) {
+					enemyBossHealthPercent = enemy.m_flDisplayedHP / enemy.m_data.max_hp;
+				}
 			}
 		}
 
-		// If there is a spawner and it's health is between 60% and 30%, nuke it!
-		if (enemySpawnerExists && enemySpawnerHealthPercent < 0.6 && enemySpawnerHealthPercent > 0.3) {
-			console.log("Tactical Nuke is purchased, cooled down, and needed. Nuke 'em.");
-			triggerAbility(ABILITIES.NUKE);
+		var meetsConditions = true;
+
+		if (ITEM_CONDITIONS[itemId].spawnerExists != null) {
+			meetsConditions = meetsConditions && enemySpawnerExists === ITEM_CONDITIONS[itemId].spawnerExists;
+		}
+
+		if (ITEM_CONDITIONS[itemId].bossMinHealthPercent != null) {
+			meetsConditions = meetsConditions && enemySpawnerHealthPercent >= ITEM_CONDITIONS[itemId].bossMinHealthPercent;
+		}
+
+		if (ITEM_CONDITIONS[itemId].spawnerMinHealthPercent != null) {
+			meetsConditions = meetsConditions && enemySpawnerHealthPercent > ITEM_CONDITIONS[itemId].spawnerMinHealthPercent;
+		}
+
+		if (meetsConditions === true) {
+			triggerItem(itemId);
 		}
 	}
 }
